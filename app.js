@@ -1,41 +1,69 @@
 let app = require('express')();
 let http = require('http').Server(app);
 let io = require('socket.io')(http);
-var onlineUsers = {};
-var onlineCount = 0;
-var nickName;
-var roomCount = 0;
+var onlineN = 0 ;
+var roomInfo = {} ;
+var roomID = "room_1";
+var nickName = null;
+var a = 2;
 http.listen(8560,()=>{
 	console.log("io start");
 });
 
+
 io.on("connection",function(socket){
-	socket.emit("connection",{status : "ok" , msg : "Wellcom to the room"});
-	// console.log("第"+(onlineCount-0+1)+"用户连接成功，用户id为"+socket.id);
-	nickName = "用户"+socket.id;
-	console.log(io)
-	let Obj_user = {
-		id:socket.id,
-		name:nickName
-	};
-	onlineCount++;
-	onlineUsers.nickName = Obj_user;
-	// console.log("在线的人数"+onlineCount)
-	socket.on("join",()=>{
-		// console.log("有用户加入房间")
-	});
-	socket.on("ready",(msg)=>{
-		roomCount++;
-		// console.log("房间的人数"+roomCount);
-		if(roomCount == "2"){
-			io.sockets.emit("startGame","ok")
+	onlineN++;
+	//返回连接成功
+	socket.emit("conneced");
+	nickName = "用户" + socket.id;
+	//返回加入房间成功
+	socket.on("join",function(){
+		//如果没有就创建
+		if(!roomInfo[roomID]){
+			roomInfo[roomID] = [];
+		};
+		//当房间满2人的时候，可以开始游戏
+		if (roomInfo[roomID].length <= 2) {
+			socket.emit("join","ok");
+			socket.join(roomID);
+			roomInfo[roomID].push(nickName);
+			if (roomInfo[roomID].length == 2) {
+				io.to(roomID).emit("game.ready")
+			};
+		}else{
+			//否则加入房间失败
+			socket.emit("room.satisfy");
 		}
 	});
-	socket.on("disconnect",()=>{
-		delete onlineCount.nickName;
-		onlineCount--;
-		roomCount--;
-		// console.log("有用户退出，当前的用户人数为"+onlineCount);
-		// console.log("房间内的人数"+roomCount)
+	//选择了红色或者蓝色的时候通知房间所有人有什么被选了并且通知自己可以控制什么飞机
+	socket.on("ready",function(msg){
+		a--;
+		if (msg == "red") {
+			io.to(roomID).emit("hide","red");
+			socket.emit("control","red");
+		}else if (msg == "blue") {
+			io.to(roomID).emit("hide","blue");
+			socket.emit("control","blue");
+		};
+		if (a==0) {
+			io.to(roomID).emit("game.start");
+		}
+	});
+
+	//飞机移动获取xy返回给房间内所有人
+	socket.on("fly",function(flyer,ori){
+		io.to(roomID).emit("fly",flyer,ori)
+	})
+
+
+	socket.on("disconnect",function(){
+		onlineN--;
+		if(roomInfo[roomID]){
+			var index = roomInfo[roomID].indexOf(nickName);
+		    if (index !== -1) {
+		      roomInfo[roomID].splice(index, 1);
+		    }
+		    socket.leave(roomID);    // 退出房间
+		}
 	})
 })
